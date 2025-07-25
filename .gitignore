@@ -1,4 +1,3 @@
-.DS_Store
 node_modules
 /dist
 
@@ -16,6 +15,8 @@ pnpm-debug.log*
 # Editor directories and files
 .idea
 .vscode
+.history
+.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
