@@ -1,5 +1,6 @@
 // 防御性编程和输入验证工具
 import { APP_CONSTANTS } from '@/constants';
+import { DevTools } from '@/utils/devTools';
 
 /**
  * 通用验证工具类
@@ -251,7 +252,7 @@ export class ErrorHandler {
       if (errorCallback && typeof errorCallback === 'function') {
         errorCallback(error);
       } else {
-        console.error('执行出错:', error);
+        DevTools.error('执行出错:', error);
       }
       return defaultValue;
     }
@@ -267,7 +268,7 @@ export class ErrorHandler {
       if (errorCallback && typeof errorCallback === 'function') {
         errorCallback(error);
       } else {
-        console.error('异步执行出错:', error);
+        DevTools.error('异步执行出错:', error);
       }
       return defaultValue;
     }

@@ -1,6 +1,7 @@
 // 搜索服务 - 提供统一的搜索功能
 import { Validator, SecurityUtils, ErrorHandler } from './validation';
 import { APP_CONSTANTS } from '@/constants';
+import { DevTools } from '@/utils/devTools';
 
 class SearchService {
   constructor() {
@@ -106,7 +107,7 @@ class SearchService {
           // 防止无限递归
           if (depth > APP_CONSTANTS.MAX_DEPTH.FOLDER_PARSING || 
               this.pathCache.length > APP_CONSTANTS.CACHE_LIMITS.MAX_PATH_CACHE_SIZE) {
-            console.warn('递归深度或路径数量达到限制，停止构建路径缓存');
+            DevTools.warn('递归深度或路径数量达到限制，停止构建路径缓存');
             return;
           }
           

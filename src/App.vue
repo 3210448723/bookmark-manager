@@ -117,6 +117,7 @@ return new Date(a.createdAt) - new Date(b.createdAt);</pre>
 import { mapState, mapGetters, mapActions } from 'vuex';
 import { APP_CONSTANTS } from '@/constants';
 import { Validator, SecurityUtils, ErrorHandler } from '@/utils/validation';
+import { DevTools } from './utils/devTools';
 import Header from './components/layout/Header.vue';
 import Sidebar from './components/layout/Sidebar.vue';
 import BookmarkList from './components/bookmarks/BookmarkList.vue';
@@ -768,7 +769,7 @@ export default {
           const buildPath = (folderId, depth = 0) => {
             // 防止无限递归，添加深度限制
             if (depth > APP_CONSTANTS.MAX_DEPTH.FOLDER_PARSING || this.allFolderPathsCache.length > APP_CONSTANTS.CACHE_LIMITS.MAX_PATH_CACHE_SIZE) {
-              console.warn('递归深度或路径数量达到限制，停止构建路径缓存');
+              DevTools.warn('递归深度或路径数量达到限制，停止构建路径缓存');
               return;
             }
             

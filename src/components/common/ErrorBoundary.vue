@@ -32,6 +32,7 @@
 
 <script>
 import { ErrorHandler } from '@/utils/validation';
+import { DevTools } from '@/utils/devTools';
 
 export default {
   name: 'ErrorBoundary',
@@ -68,7 +69,7 @@ export default {
     };
   },
   errorCaptured(error, vm, info) {
-    console.error('ErrorBoundary捕获到错误:', error, info);
+    DevTools.error('ErrorBoundary捕获到错误:', error, info);
     
     this.hasError = true;
     this.errorMessage = this.formatErrorMessage(error);
@@ -133,9 +134,9 @@ export default {
         // 在生产环境中，这里应该发送到错误监控服务
         if (process.env.NODE_ENV === 'production') {
           // 例如：errorReportingService.send(errorReport)
-          console.log('错误报告已记录:', errorReport);
+          DevTools.log('错误报告已记录:', errorReport);
         } else {
-          console.error('开发环境错误报告:', errorReport);
+          DevTools.error('开发环境错误报告:', errorReport);
         }
       }, '发送错误报告失败');
     },

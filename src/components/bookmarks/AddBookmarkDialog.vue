@@ -35,6 +35,7 @@
 
 <script>
 import { mapState, mapGetters, mapActions } from 'vuex';
+import { DevTools } from '@/utils/devTools';
 
 export default {
   name: 'AddBookmarkDialog',
@@ -159,7 +160,7 @@ export default {
           });
         }
       } catch (e) {
-        console.log('Not in a browser extension context');
+        DevTools.log('Not in a browser extension context');
       }
     }
   }

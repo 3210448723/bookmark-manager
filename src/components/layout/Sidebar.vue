@@ -73,6 +73,7 @@
 import { mapState, mapGetters, mapActions } from 'vuex';
 import { APP_CONSTANTS } from '@/constants';
 import { Validator, SecurityUtils, ErrorHandler } from '@/utils/validation';
+import { DevTools } from '@/utils/devTools';
 
 export default {
   name: 'SidebarComponent',
@@ -95,7 +96,7 @@ export default {
         return ErrorHandler.safeExecute(() => {
           // 验证文件夹数据
           if (!Validator.isValidArray(newFolders)) {
-            console.warn('接收到无效的文件夹数据');
+            DevTools.warn('接收到无效的文件夹数据');
             return;
           }
           
@@ -623,7 +624,7 @@ export default {
             });
           }
         } catch (error) {
-          console.error('拖放数据处理错误:', error);
+          DevTools.error('拖放数据处理错误:', error);
           this.$message.error('拖放操作失败');
         }
       }, '文件夹拖放处理失败');

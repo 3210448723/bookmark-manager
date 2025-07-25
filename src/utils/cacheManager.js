@@ -1,5 +1,6 @@
 // 缓存管理服务 - 统一管理应用中的各种缓存
 import { APP_CONSTANTS } from '@/constants';
+import { DevTools } from '@/utils/devTools';
 
 class CacheManager {
   constructor() {
@@ -11,7 +12,7 @@ class CacheManager {
   // 创建缓存实例
   createCache(name, maxSize = 100, ttl = 0) {
     if (this.caches.has(name)) {
-      console.warn(`缓存 ${name} 已存在`);
+      DevTools.warn(`缓存 ${name} 已存在`);
       return this.caches.get(name);
     }
 

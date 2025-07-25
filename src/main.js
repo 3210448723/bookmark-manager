@@ -4,6 +4,7 @@ import ElementUI from 'element-ui'
 import 'element-ui/lib/theme-chalk/index.css'
 import store from './store'
 import VueDraggable from 'vuedraggable'
+import { DevTools } from '@/utils/devTools';
 
 // 只在开发环境显示生产提示
 Vue.config.productionTip = process.env.NODE_ENV === 'development'
@@ -31,12 +32,12 @@ new Vue({
       await this.$nextTick()
       await this.$store.dispatch('bookmarks/initializeBookmarkOrder')
     } catch (error) {
-      console.error('初始化书签顺序失败:', error)
+      DevTools.error('初始化书签顺序失败:', error)
     }
   },
   errorCaptured(err, vm, info) {
     // 全局错误处理
-    console.error('全局错误捕获:', err, info)
+    DevTools.error('全局错误捕获:', err, info)
     
     // 在生产环境中，可以发送错误到监控服务
     if (process.env.NODE_ENV === 'production') {

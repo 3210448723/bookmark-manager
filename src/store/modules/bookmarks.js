@@ -4,6 +4,8 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
 // 引入验证工具
 import { Validator, SecurityUtils, ErrorHandler, BookmarkValidator } from '@/utils/validation';
 import { APP_CONSTANTS } from '@/constants';
+// 引入开发者工具
+import { DevTools } from '@/utils/devTools';
 
 // 缓存清理辅助函数
 const clearCache = (state) => {
@@ -77,7 +79,7 @@ class OperationManager {
     if (typeof operation.undo === 'function') {
       return operation.undo();
     }
-    console.warn(`未找到操作类型 ${operation.type} 的撤销处理器`);
+    DevTools.warn(`未找到操作类型 ${operation.type} 的撤销处理器`);
   }
   
   // 执行重做
@@ -90,7 +92,7 @@ class OperationManager {
     if (typeof operation.redo === 'function') {
       return operation.redo();
     }
-    console.warn(`未找到操作类型 ${operation.type} 的重做处理器`);
+    DevTools.warn(`未找到操作类型 ${operation.type} 的重做处理器`);
   }
 }
 
@@ -558,7 +560,7 @@ const mutations = {
       if (operation) {
         // 检查操作是否已被撤销
         if (state.undoneOperationIds.has(operation.id)) {
-          console.warn('操作已被撤销过:', operation.id);
+          DevTools.warn('操作已被撤销过:', operation.id);
           return;
         }
         
@@ -1105,7 +1107,7 @@ const actions = {
       
       return Promise.resolve();
     } catch (error) {
-      console.error('Invalid sort function:', error);
+      DevTools.error('Invalid sort function:', error);
       return Promise.reject(error);
     }
   },

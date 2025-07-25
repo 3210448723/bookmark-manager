@@ -1,5 +1,6 @@
 // 性能监控工具 - 用于分析组件性能和优化建议
 import { APP_CONSTANTS } from '@/constants';
+import { DevTools } from '@/utils/devTools';
 
 class PerformanceMonitor {
   constructor() {
@@ -81,7 +82,7 @@ class PerformanceMonitor {
     }
 
     if (warnings.length > 0) {
-      console.warn(`性能警告 [${result.name}]:`, warnings);
+      DevTools.warn(`性能警告 [${result.name}]:`, warnings);
       this.suggestOptimizations(result, warnings);
     }
   }
@@ -108,7 +109,7 @@ class PerformanceMonitor {
       suggestions.push('考虑使用防抖或节流');
     }
 
-    console.info(`优化建议 [${result.name}]:`, suggestions);
+    DevTools.info(`优化建议 [${result.name}]:`, suggestions);
   }
 
   // 获取性能报告
@@ -209,7 +210,7 @@ export const PerformanceMonitorMixin = {
       // 输出最终性能报告
       const report = this.$performanceMonitor.getReport();
       if (report.summary.performanceIssues > 0) {
-        console.warn(`组件 ${this.$options.name} 性能报告:`, report);
+        DevTools.warn(`组件 ${this.$options.name} 性能报告:`, report);
       }
       this.$performanceMonitor.clear();
     }

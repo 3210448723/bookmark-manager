@@ -2,6 +2,7 @@
 import { Validator, SecurityUtils, ErrorHandler } from './validation';
 import cacheManager from './cacheManager';
 import { APP_CONSTANTS } from '@/constants';
+import { DevTools } from '@/utils/devTools';
 
 class DataAccessLayer {
   constructor() {
@@ -317,7 +318,7 @@ class DataAccessLayer {
       // 预加载根文件夹的书签
       this.getBookmarksByFolderId('root', true);
       
-      console.log('数据预加载完成');
+      DevTools.log('数据预加载完成');
     }, '数据预加载失败');
   }
 

@@ -91,6 +91,7 @@
 import { mapState, mapGetters, mapActions } from 'vuex';
 import { APP_CONSTANTS } from '@/constants';
 import { Validator, SecurityUtils, ErrorHandler, BookmarkValidator } from '@/utils/validation';
+import { DevTools } from '@/utils/devTools';
 
 export default {
   name: 'ImportExport',
@@ -241,13 +242,13 @@ export default {
           // 使用我们的验证工具
           const validation = BookmarkValidator.validateBookmark(bookmark);
           if (!validation.isValid) {
-            console.warn(`无效的书签: ${bookmark.name}`, validation.errors);
+            DevTools.warn(`无效的书签: ${bookmark.name}`, validation.errors);
             return false;
           }
           
           // 额外的URL验证
           if (!Validator.isValidUrl(bookmark.url)) {
-            console.warn(`无效的URL: ${bookmark.url}`);
+            DevTools.warn(`无效的URL: ${bookmark.url}`);
             return false;
           }
           
@@ -269,7 +270,7 @@ export default {
         this.$emit('update:importDialogVisible', false);
       } catch (error) {
         this.$loading().close();
-        console.error('导入错误', error);
+        DevTools.error('导入错误', error);
         this.$message.error('导入失败: ' + (error.message || '未知错误'));
       }
     },
@@ -302,7 +303,7 @@ export default {
         const parseNode = (element, parentId = 'root', depth = 0) => {
           // 防止无限递归
           if (depth > APP_CONSTANTS.MAX_DEPTH.FOLDER_PARSING) {
-            console.warn('文件夹层级过深，停止解析');
+            DevTools.warn('文件夹层级过深，停止解析');
             return;
           }
           
@@ -362,7 +363,7 @@ export default {
                         createdAt
                       });
                     } else {
-                      console.warn('跳过无效URL:', url);
+                      DevTools.warn('跳过无效URL:', url);
                     }
                   }
                 }
@@ -371,7 +372,7 @@ export default {
                 parseNode(child, parentId, depth);
               }
             } catch (elementError) {
-              console.warn('处理元素时出错:', elementError);
+              DevTools.warn('处理元素时出错:', elementError);
             }
           }
         };
@@ -381,7 +382,7 @@ export default {
         if (rootDL) {
           parseNode(rootDL, 'root');
         } else {
-          console.warn('未找到根DL元素，尝试查找其他书签结构');
+          DevTools.warn('未找到根DL元素，尝试查找其他书签结构');
           // 尝试查找其他可能的书签结构
           const bookmarkLinks = doc.querySelectorAll('a[href]');
           bookmarkLinks.forEach(link => {
@@ -402,7 +403,7 @@ export default {
         
         return { bookmarks, folders };
       } catch (error) {
-        console.error('解析HTML时出错:', error);
+        DevTools.error('解析HTML时出错:', error);
         throw new Error('解析书签文件失败: ' + error.message);
       }
     },
@@ -527,7 +528,7 @@ export default {
         this.$emit('update:exportDialogVisible', false);
         this.$message.success(`导出成功：${bookmarksToExport.length} 个书签，${foldersToExport.length} 个文件夹`);
       } catch (error) {
-        console.error('导出错误', error);
+        DevTools.error('导出错误', error);
         this.$message.error('导出失败: ' + (error.message || '未知错误'));
       }
     },
@@ -572,7 +573,7 @@ export default {
         // 递归生成文件夹和书签HTML
         const generateFolderHTML = (folder, indent = 1) => {
           if (indent > APP_CONSTANTS.MAX_DEPTH.HTML_GENERATION) {
-            console.warn('文件夹层级过深，停止生成');
+            DevTools.warn('文件夹层级过深，停止生成');
             return '';
           }
           
@@ -589,7 +590,7 @@ export default {
               
               folderHTML += `${spaces}    <DT><A HREF="${escapedUrl}" ADD_DATE="${addDate}">${escapedName}</A>\n`;
             } catch (error) {
-              console.warn('生成书签HTML时出错:', error);
+              DevTools.warn('生成书签HTML时出错:', error);
             }
           });
           
@@ -618,7 +619,7 @@ export default {
               
               html += `    <DT><A HREF="${escapedUrl}" ADD_DATE="${addDate}">${escapedName}</A>\n`;
             } catch (error) {
-              console.warn('生成根书签HTML时出错:', error);
+              DevTools.warn('生成根书签HTML时出错:', error);
             }
           });
         }
@@ -626,7 +627,7 @@ export default {
         html += '</DL><p>';
         return html;
       } catch (error) {
-        console.error('生成HTML时出错:', error);
+        DevTools.error('生成HTML时出错:', error);
         throw new Error('生成导出文件失败: ' + error.message);
       }
     },

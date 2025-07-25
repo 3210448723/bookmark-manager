@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 // 开发工具集合
 export const DevTools = {
   // 开发环境日志工具

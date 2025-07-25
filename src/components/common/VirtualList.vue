@@ -46,6 +46,7 @@
 
 <script>
 import { PerformanceUtils } from '@/utils/validation';
+import { DevTools } from '@/utils/devTools';
 
 export default {
   name: 'VirtualList',
@@ -200,7 +201,7 @@ export default {
     // 滚动到指定项目
     scrollToItem(index) {
       if (index < 0 || index >= this.items.length) {
-        console.warn('Virtual List: 无效的索引', index);
+        DevTools.warn('Virtual List: 无效的索引', index);
         return;
       }
       
