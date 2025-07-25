@@ -40,7 +40,15 @@
     "parserOptions": {
       "parser": "@babel/eslint-parser"
     },
-    "rules": {}
+    "rules": {},
+    "overrides": [
+      {
+        "files": ["src/utils/devTools.js"],
+        "rules": {
+          "no-console": "off"
+        }
+      }
+    ]
   },
   "browserslist": [
     "> 1%",

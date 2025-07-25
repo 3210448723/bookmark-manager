@@ -80,16 +80,24 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: production-files
+          path: dist
+          
       - name: Create Release
+        id: create_release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.event.release.tag_name }}
+          name: Release ${{ github.event.release.tag_name }}
           draft: false
           prerelease: false
-          allow_updates: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v1
         with:
@@ -101,6 +109,8 @@ jobs:
     name: Deploy to GitHub Pages
     runs-on: ubuntu-latest
     needs: release
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -123,15 +133,24 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
 
-      - name: Deploy
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
-          # optional: user configuration
-          # user_name: github-actions
-          # user_email: actions@github.com
+          
+      - name: Output deployment URL
+        run: |
+          echo "🚀 Deployment successful!"
+          echo "📄 Site URL: ${{ steps.deployment.outputs.page_url }}"
+          echo "📄 Alternative URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          echo "::notice title=Deployment URL::${{ steps.deployment.outputs.page_url }}"
+
+
 
   codeql:
     name: CodeQL Analysis

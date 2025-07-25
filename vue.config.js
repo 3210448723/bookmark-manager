@@ -3,6 +3,14 @@ const { defineConfig } = require('@vue/cli-service')
 module.exports = defineConfig({
   transpileDependencies: true,
   
+  // 动态配置publicPath
+  // 本地开发: '/' (http://localhost:8080)
+  // GitHub Pages: 自动从仓库名获取 (如 /bookmark-manager/)
+  // 其他部署环境: 可通过环境变量 PUBLIC_PATH 自定义
+  publicPath: process.env.NODE_ENV === 'production' 
+    ? (process.env.PUBLIC_PATH || `/${process.env.GITHUB_REPOSITORY?.split('/')[1] || 'bookmark-manager'}/`)
+    : '/',
+  
   // 性能优化配置
   configureWebpack: config => {
     // 生产环境优化
@@ -44,9 +52,11 @@ module.exports = defineConfig({
     hot: true,
     compress: true,
     // 性能优化
-    overlay: {
-      warnings: false,
-      errors: true
+    client: {
+      overlay: {
+        warnings: false,
+        errors: true
+      }
     }
   },
   
