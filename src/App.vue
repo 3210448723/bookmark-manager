@@ -501,9 +501,6 @@ export default {
             center: true,
             customClass: 'search-results-dialog'
           }).catch(() => {});
-          
-          // 改用更安全的组件方式显示搜索结果
-          this.showSearchResultsDialog(bookmarksWithPath);
         } else {
           this.$message({
             type: 'info',
@@ -842,26 +839,40 @@ export default {
         return div.innerHTML
       }
       
-      const resultsList = bookmarksWithPath.map(bookmark => {
+      const resultsList = bookmarksWithPath.map((bookmark, index) => {
         const escapedName = escapeHtml(bookmark.name)
         const escapedUrl = escapeHtml(bookmark.url)
         const escapedPath = escapeHtml(bookmark.pathString)
         
         return `
           <li style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
-            <div><b>${escapedName}</b></div>
-            <div style="color: #999; font-size: 12px;">${escapedUrl}</div>
-            <div style="color: #67C23A; font-size: 12px; margin-top: 5px;">
-              <i class="el-icon-folder"></i> ${escapedPath}
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+              <div style="flex: 1;">
+                <div><b>${escapedName}</b></div>
+                <div style="color: #999; font-size: 12px; word-break: break-all;">${escapedUrl}</div>
+                <div style="color: #67C23A; font-size: 12px; margin-top: 5px;">
+                  <i class="el-icon-folder"></i> ${escapedPath}
+                </div>
+              </div>
+              <div style="margin-left: 10px;">
+                <button 
+                  onclick="window.jumpToFolder('${bookmark.folderId}')" 
+                  style="background: #409EFF; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 12px;"
+                  onmouseover="this.style.background='#66b1ff'"
+                  onmouseout="this.style.background='#409EFF'"
+                >
+                  跳转
+                </button>
+              </div>
             </div>
           </li>
         `
       }).join('')
       
       return `
-        <div style="max-height: 300px; overflow-y: auto;">
+        <div style="max-height: 400px; overflow-y: auto;">
           <h3>找到 ${bookmarksWithPath.length} 个匹配的书签</h3>
-          <ul style="list-style: none; padding: 0;">
+          <ul style="list-style: none; padding: 0; margin: 0;">
             ${resultsList}
           </ul>
         </div>
@@ -878,6 +889,19 @@ export default {
       
       // 可以在这里实现更安全的交互方式
       // 比如使用弹出菜单或其他组件方式
+    },
+    
+    // 处理从搜索结果跳转到文件夹的功能
+    handleJumpToFolder(folderId) {
+      return ErrorHandler.safeExecute(() => {
+        if (!Validator.isValidId(folderId)) {
+          this.$message.error('无效的文件夹ID');
+          return;
+        }
+        
+        this.handleFolderSelected(folderId);
+        this.$message.success('已跳转到对应文件夹');
+      }, '跳转到文件夹失败');
     },
     
     // 更安全地显示搜索结果的方法
@@ -901,6 +925,13 @@ export default {
     }
   },
   
+  mounted() {
+    // 设置全局的跳转函数，供搜索结果中的按钮使用
+    window.jumpToFolder = (folderId) => {
+      this.handleJumpToFolder(folderId);
+    };
+  },
+  
   beforeDestroy() {
     // 清理所有活跃的通知
     this.activeNotifications.forEach((notification) => {
@@ -921,8 +952,10 @@ export default {
     document.removeEventListener('mousemove', this.handleResize);
     document.removeEventListener('mouseup', this.stopResize);
     
-    // 清理可能的window事件监听器
-    window.removeEventListener('jump-to-folder', this.handleJumpToFolder);
+    // 清理全局函数
+    if (window.jumpToFolder) {
+      delete window.jumpToFolder;
+    }
     
     // 清理缓存
     this.allFolderPathsCache = null;
@@ -1026,5 +1059,20 @@ html, body {
   margin: 0;
   white-space: pre-wrap;
   word-wrap: break-word;
+}
+
+/* 搜索结果对话框样式 */
+.search-results-dialog .el-message-box {
+  width: 600px;
+  max-width: 90vw;
+}
+
+.search-results-dialog .el-message-box__content {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.search-results-dialog .el-message-box__message {
+  padding: 0;
 }
 </style>
