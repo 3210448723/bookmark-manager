@@ -29,6 +29,7 @@
           <BookmarkList 
             :current-folder-id="currentFolderId"
             :special-mode="specialMode"
+            :focus-bookmark-id="focusBookmarkId"
             @folder-selected="handleFolderSelected"
           />
         </div>
@@ -137,6 +138,7 @@ export default {
     return {
       currentFolderId: 'root',
       specialMode: null,
+      focusBookmarkId: null,
       searchQuery: '',
       addBookmarkDialogVisible: false,
       addFolderDialogVisible: false,
@@ -413,6 +415,7 @@ export default {
         
         this.currentFolderId = folderId;
         this.specialMode = null;
+        this.focusBookmarkId = null;
       }, '文件夹选择失败');
     },
     
@@ -439,6 +442,7 @@ export default {
         
         if (Validator.isEmpty(cleanQuery)) {
           // 如果查询为空，则不执行搜索
+          this.focusBookmarkId = null;
           return;
         }
         
@@ -856,7 +860,7 @@ export default {
               </div>
               <div style="margin-left: 10px;">
                 <button 
-                  onclick="window.jumpToFolder('${bookmark.folderId}')" 
+                  onclick="window.jumpToBookmark('${bookmark.folderId}', '${bookmark.id}')" 
                   style="background: #409EFF; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 12px;"
                   onmouseover="this.style.background='#66b1ff'"
                   onmouseout="this.style.background='#409EFF'"
@@ -891,17 +895,24 @@ export default {
       // 比如使用弹出菜单或其他组件方式
     },
     
-    // 处理从搜索结果跳转到文件夹的功能
-    handleJumpToFolder(folderId) {
+    // 处理从搜索结果跳转到书签位置的功能
+    handleJumpToBookmark(folderId, bookmarkId) {
       return ErrorHandler.safeExecute(() => {
         if (!Validator.isValidId(folderId)) {
           this.$message.error('无效的文件夹ID');
           return;
         }
+
+        if (!Validator.isValidId(bookmarkId)) {
+          this.$message.error('无效的书签ID');
+          return;
+        }
         
-        this.handleFolderSelected(folderId);
-        this.$message.success('已跳转到对应文件夹');
-      }, '跳转到文件夹失败');
+        this.currentFolderId = folderId;
+        this.specialMode = null;
+        this.focusBookmarkId = bookmarkId;
+        this.$message.success('已跳转到对应书签位置');
+      }, '跳转到书签位置失败');
     },
     
     // 更安全地显示搜索结果的方法
@@ -927,8 +938,8 @@ export default {
   
   mounted() {
     // 设置全局的跳转函数，供搜索结果中的按钮使用
-    window.jumpToFolder = (folderId) => {
-      this.handleJumpToFolder(folderId);
+    window.jumpToBookmark = (folderId, bookmarkId) => {
+      this.handleJumpToBookmark(folderId, bookmarkId);
     };
   },
   
@@ -953,8 +964,8 @@ export default {
     document.removeEventListener('mouseup', this.stopResize);
     
     // 清理全局函数
-    if (window.jumpToFolder) {
-      delete window.jumpToFolder;
+    if (window.jumpToBookmark) {
+      delete window.jumpToBookmark;
     }
     
     // 清理缓存
