@@ -30,7 +30,10 @@
       </div>
       <div class="list-actions">
         <el-button-group v-if="selectedBookmarks.length > 0">
-          <el-button size="small" type="primary" @click="moveBulk">移动</el-button>
+          <el-button size="small" type="primary" @click="moveBulk">批量移动</el-button>
+          <el-button size="small" @click="showTagDialog">添加标签</el-button>
+          <el-button size="small" type="warning" :loading="healthChecking" @click="checkSelectedHealth">健康检查</el-button>
+          <el-button size="small" @click="exportBulk">导出选中</el-button>
           <el-button size="small" type="danger" @click="deleteBulk">删除</el-button>
         </el-button-group>
         <el-dropdown v-if="bookmarks.length > 0 && currentFolderId !== 'root' && !specialMode" @command="handleSortCommand">
@@ -79,11 +82,18 @@
             >
               <img class="favicon" :data-url="scope.row.url" :data-bookmark-id="scope.row.id" alt="" loading="lazy" :src="getInitialFaviconSrc(scope.row.url)" @error="handleFaviconError" @load="handleFaviconLoad">
               <span class="text-ellipsis">{{ safeDisplayText(scope.row.name) }}</span>
+              <el-tag v-for="tag in visibleTags(scope.row)" :key="tag" size="mini" effect="plain">{{ tag }}</el-tag>
+              <el-tag v-if="healthResult(scope.row)" size="mini" :type="healthResult(scope.row).reachable ? 'success' : 'danger'" effect="plain">
+                {{ healthLabel(scope.row) }}
+              </el-tag>
               <i v-if="!specialMode && currentFolderId !== 'root'" class="el-icon-sort drag-handle" title="拖拽排序"></i>
             </div>
           </template>
         </el-table-column>
         <el-table-column prop="url" label="URL" min-width="250" show-overflow-tooltip></el-table-column>
+        <el-table-column label="标签" min-width="150">
+          <template slot-scope="scope"><el-tag v-for="tag in visibleTags(scope.row)" :key="tag" size="mini" effect="plain">{{ tag }}</el-tag><span v-if="!visibleTags(scope.row).length" class="muted-text">—</span></template>
+        </el-table-column>
         <el-table-column label="所在路径" min-width="200">
           <template slot-scope="scope">
             <div class="bookmark-path"><span class="text-ellipsis">{{ getBookmarkPath(scope.row) }}</span><i class="el-icon-copy-document copy-item-path" title="复制路径" @click.stop="copyItemPath(scope.row)"></i></div>
@@ -106,10 +116,10 @@
         :get-key="bookmarkKey"
       >
         <template slot-scope="{ item }">
-          <div class="virtual-bookmark-row" :class="{ 'bookmark-row-target': item.id === focusBookmarkId }">
+          <div class="virtual-bookmark-row" :class="{ 'bookmark-row-target': item.id === focusBookmarkId, 'health-failed-row': healthResult(item) && !healthResult(item).reachable }">
             <el-checkbox :value="isSelected(item)" class="virtual-selection" @change="toggleBookmarkSelection(item, $event)"></el-checkbox>
             <img class="favicon" :data-url="item.url" :data-bookmark-id="item.id" alt="" loading="lazy" :src="getInitialFaviconSrc(item.url)" @error="handleFaviconError" @load="handleFaviconLoad">
-            <div class="virtual-bookmark-main"><span class="bookmark-title text-ellipsis">{{ safeDisplayText(item.name) }}</span><span class="bookmark-url text-ellipsis">{{ safeDisplayText(item.url) }}</span></div>
+            <div class="virtual-bookmark-main"><span class="bookmark-title text-ellipsis">{{ safeDisplayText(item.name) }}</span><span class="bookmark-url text-ellipsis">{{ safeDisplayText(item.url) }}</span><span class="bookmark-tags"><el-tag v-for="tag in visibleTags(item)" :key="tag" size="mini" effect="plain">{{ tag }}</el-tag><el-tag v-if="healthResult(item)" size="mini" :type="healthResult(item).reachable ? 'success' : 'danger'" effect="plain">{{ healthLabel(item) }}</el-tag></span></div>
             <span class="virtual-bookmark-path text-ellipsis">{{ getBookmarkPath(item) }}</span>
             <span class="virtual-bookmark-date">{{ formatDate(item.createdAt) }}</span>
             <bookmark-actions :bookmark="item" @command="handleCommand"></bookmark-actions>
@@ -145,6 +155,12 @@
     <el-dialog title="移动到文件夹" :visible.sync="moveDialogVisible" width="400px">
       <el-tree :data="folderTreeData" :props="defaultProps" node-key="id" :default-expanded-keys="['root']" @node-click="handleFolderSelect"></el-tree>
       <span slot="footer"><el-button @click="moveDialogVisible = false">取消</el-button><el-button type="primary" :disabled="!selectedFolderId" @click="moveBookmark">确定</el-button></span>
+    </el-dialog>
+
+    <el-dialog title="批量添加标签" :visible.sync="tagDialogVisible" width="430px">
+      <p class="dialog-tip">为选中的 {{ selectedBookmarks.length }} 个书签添加标签，多个标签用逗号或换行分隔。</p>
+      <el-input v-model="tagsInput" type="textarea" :rows="4" maxlength="500" show-word-limit placeholder="例如：工作, 待阅读"></el-input>
+      <span slot="footer"><el-button @click="tagDialogVisible = false">取消</el-button><el-button type="primary" @click="addTagsBulk">添加</el-button></span>
     </el-dialog>
 
     <el-dialog title="自定义排序" :visible.sync="customSortDialogVisible" width="600px">
@@ -198,6 +214,9 @@ export default {
       virtualRowHeight: APP_CONSTANTS.VIRTUAL_LIST.ROW_HEIGHT,
       editDialogVisible: false,
       moveDialogVisible: false,
+      tagDialogVisible: false,
+      tagsInput: '',
+      healthChecking: false,
       customSortDialogVisible: false,
       selectedFolderId: null,
       currentEditingBookmarkId: null,
@@ -210,7 +229,7 @@ export default {
     };
   },
   computed: {
-    ...mapState({ folders: state => state.bookmarks.folders, invalidBookmarks: state => state.bookmarks.invalidBookmarks, duplicateBookmarks: state => state.bookmarks.duplicateBookmarks, sortHistory: state => state.bookmarks.sortHistory }),
+    ...mapState({ folders: state => state.bookmarks.folders, invalidBookmarks: state => state.bookmarks.invalidBookmarks, duplicateBookmarks: state => state.bookmarks.duplicateBookmarks, sortHistory: state => state.bookmarks.sortHistory, healthResults: state => state.bookmarks.healthResults }),
     ...mapGetters('bookmarks', ['getBookmarksByFolderId', 'getAllBookmarks', 'getAllBookmarksWithPath', 'getFoldersByParentId', 'getFolderPath']),
     bookmarks() {
       if (this.specialMode === 'invalid') return this.invalidBookmarks;
@@ -250,14 +269,24 @@ export default {
     }
   },
   methods: {
-    ...mapActions('bookmarks', ['updateBookmark', 'deleteBookmark', 'deleteBookmarksBulk', 'moveItems', 'sortBookmarksByName', 'sortBookmarksByUrl', 'sortBookmarksByDate', 'sortBookmarksCustom', 'moveBookmarkUp', 'moveBookmarkDown']),
+    ...mapActions('bookmarks', ['updateBookmark', 'deleteBookmark', 'deleteBookmarksBulk', 'moveItems', 'bulkAddTags', 'checkBookmarkHealth', 'sortBookmarksByName', 'sortBookmarksByUrl', 'sortBookmarksByDate', 'sortBookmarksCustom', 'moveBookmarkUp', 'moveBookmarkDown']),
     resetListState() { this.currentPage = 1; this.selectedBookmarks = []; this.pageSize = this.currentFolderId === 'root' ? APP_CONSTANTS.PAGINATION.ROOT_PAGE_SIZES[0] : APP_CONSTANTS.PAGINATION.FOLDER_PAGE_SIZES[1]; this.$nextTick(this.observeFaviconElements); },
     keepPageInRange() { this.currentPage = Math.min(this.currentPage, Math.max(1, Math.ceil(this.bookmarks.length / this.pageSize))); this.$nextTick(this.observeFaviconElements); },
     safeDisplayText(text) { return Validator.isEmpty(text) ? '' : SecurityUtils.stripHtml(String(text)); },
     validateAndSanitizeInput(input, maxLength) { const value = SecurityUtils.sanitizeInput(input || ''); return maxLength ? value.slice(0, maxLength) : value; },
     formatDate(dateString) { if (!this._dateCache) this._dateCache = new Map(); if (this._dateCache.has(dateString)) return this._dateCache.get(dateString); const value = new Date(dateString).toLocaleString(); this._dateCache.set(dateString, value); return value; },
     bookmarkKey(bookmark) { return bookmark.id; },
-    getRowClassName({ row }) { return row.id === this.focusBookmarkId ? 'bookmark-row-target' : ''; },
+    getRowClassName({ row }) {
+      return [row.id === this.focusBookmarkId ? 'bookmark-row-target' : '', this.healthResult(row) && !this.healthResult(row).reachable ? 'health-failed-row' : ''].filter(Boolean).join(' ');
+    },
+    visibleTags(bookmark) { return Array.isArray(bookmark && bookmark.tags) ? bookmark.tags.slice(0, 6) : []; },
+    healthResult(bookmark) { return bookmark && this.healthResults ? this.healthResults[bookmark.id] : null; },
+    healthLabel(bookmark) {
+      const result = this.healthResult(bookmark);
+      if (!result) return '';
+      if (result.reachable) return `${result.status || 200} 正常`;
+      return result.status ? `${result.status} 失效` : '不可达';
+    },
     dragClass(index, bookmark) { return { dragging: this.dragState.isDragging && this.dragState.draggedBookmark && bookmark.id === this.dragState.draggedBookmark.id, 'drop-target': this.dragState.targetIndex === index }; },
     getInitialFaviconSrc(url) { return this.lazyLoading.loadedIcons.has(url) ? this.getFavicon(url) : this.lazyLoading.defaultIcon; },
     getFavicon(url) { if (!Validator.isValidUrl(url)) return ''; if (!this._faviconCache) this._faviconCache = new Map(); if (!this._faviconCache.has(url)) { const parsed = new URL(url); this._faviconCache.set(url, `${parsed.protocol}//${parsed.hostname}/favicon.ico`); } return this._faviconCache.get(url); },
@@ -310,6 +339,26 @@ export default {
     handleFolderSelect(folder) { this.selectedFolderId = folder.id; },
     moveBookmark() { if (!this.selectedFolderId) return; const ids = Array.isArray(this.editForm.id) ? this.editForm.id : [this.editForm.id]; this.moveItems({ itemIds: ids, targetFolderId: this.selectedFolderId, itemType: 'bookmark' }).then(() => { this.moveDialogVisible = false; this.selectedBookmarks = []; this.$message.success('移动成功'); }); },
     moveBulk() { if (!this.selectedBookmarks.length) return; this.editForm = { id: this.selectedBookmarks.map(bookmark => bookmark.id) }; this.selectedFolderId = null; this.moveDialogVisible = true; },
+    showTagDialog() { if (this.selectedBookmarks.length) { this.tagsInput = ''; this.tagDialogVisible = true; } },
+    addTagsBulk() {
+      const tags = this.tagsInput.split(/[\n,]/).map(tag => this.validateAndSanitizeInput(tag, 50)).filter(Boolean);
+      if (!tags.length) return this.$message.warning('请输入至少一个标签');
+      this.bulkAddTags({ itemIds: this.selectedBookmarks.map(bookmark => bookmark.id), tags }).then(() => {
+        this.tagDialogVisible = false;
+        this.$message.success(`已为 ${this.selectedBookmarks.length} 个书签添加标签`);
+      }).catch(error => this.$message.error(error.message || '添加标签失败'));
+    },
+    async checkSelectedHealth() {
+      if (!this.selectedBookmarks.length || this.healthChecking) return;
+      this.healthChecking = true;
+      try {
+        const results = await this.checkBookmarkHealth({ ids: this.selectedBookmarks.map(bookmark => bookmark.id), timeout: 5000 });
+        const failed = results.filter(result => !result.reachable).length;
+        if (failed) this.$message.warning(`${failed} 个书签不可达，已标红提示`);
+        else this.$message.success('选中书签均可正常访问');
+      } finally { this.healthChecking = false; }
+    },
+    exportBulk() { if (this.selectedBookmarks.length) this.$emit('export-selected', this.selectedBookmarks.slice()); },
     deleteBulk() { if (!this.selectedBookmarks.length) return; this.$confirm(`此操作将永久删除选中的 ${this.selectedBookmarks.length} 个书签，是否继续？`, '提示', { type: 'warning' }).then(() => this.deleteBookmarksBulk(this.selectedBookmarks.map(bookmark => bookmark.id))).catch(() => {}); },
     handleSortCommand(command) { if (this.currentFolderId === 'root') return; if (command === 'name') this.sortBookmarksByName(this.currentFolderId); else if (command === 'url') this.sortBookmarksByUrl(this.currentFolderId); else if (command === 'date') this.sortBookmarksByDate(this.currentFolderId); else if (command === 'custom') { this.selectedSortHistoryId = null; this.customSortDialogVisible = true; } },
     formatSortHistoryLabel(item) { return `${new Date(item.createdAt).toLocaleString()} · ${item.sortFunctionString.slice(0, 50)}`; },
@@ -343,6 +392,7 @@ export default {
 .bookmark-name, .bookmark-path { display: flex; align-items: center; min-width: 0; gap: 6px; padding: 4px 8px; border-radius: 4px; }
 .bookmark-name { cursor: grab; position: relative; }
 .bookmark-name:hover { background: #f5f7fa; }
+.bookmark-name .el-tag { flex: 0 0 auto; }
 .bookmark-name.dragging { opacity: .5; }
 .bookmark-name.drop-target { background: #f0f9eb; }
 .text-ellipsis { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -356,6 +406,7 @@ export default {
 .virtual-bookmark-main { display: flex; flex-direction: column; min-width: 180px; flex: 1; gap: 4px; }
 .bookmark-title { color: #303133; }
 .bookmark-url { color: #909399; font-size: 12px; }
+.bookmark-tags { display: flex; gap: 4px; min-height: 18px; }
 .virtual-bookmark-path { width: 200px; color: #909399; font-size: 12px; }
 .virtual-bookmark-date { width: 145px; color: #909399; font-size: 12px; }
 .pagination-container { flex: 0 0 auto; min-width: 0; display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 12px; background: #fff; }
@@ -365,6 +416,9 @@ export default {
 .sort-history-select { width: 100%; margin-bottom: 10px; }
 .empty-content { padding: 60px 0; text-align: center; color: #909399; }
 .empty-content i { display: block; font-size: 42px; margin-bottom: 12px; }
+.muted-text, .dialog-tip { color: #909399; }
+.health-failed-row > td { background: #fef0f0 !important; }
+.health-failed-row .bookmark-title, .health-failed-row .bookmark-url { color: #c45656; }
 @media (max-width: 900px) { .virtual-bookmark-path, .virtual-bookmark-date { display: none; } .list-header { align-items: flex-start; flex-direction: column; } .list-actions { width: 100%; justify-content: flex-end; } }
 @media (max-width: 680px) { .bookmark-list { padding: 10px; } .pagination-container { justify-content: center; } .pagination-container .el-pagination { justify-content: center; } }
 </style>

@@ -9,7 +9,7 @@
     >
       <div class="import-container">
         <el-alert
-          title="支持浏览器导出的书签HTML文件"
+          title="支持 Chrome、Edge、Firefox 的 HTML 或 JSON 书签文件"
           type="info"
           :closable="false"
           show-icon
@@ -24,12 +24,12 @@
             :on-change="handleFileChange"
             :file-list="fileList"
             :limit="1"
-            accept=".html,.htm"
+            accept=".html,.htm,.json"
             ref="upload"
           >
             <i class="el-icon-upload"></i>
             <div class="el-upload__text">将书签文件拖到此处，或<em>点击上传</em></div>
-            <div class="el-upload__tip" slot="tip">只支持HTML格式的书签文件</div>
+            <div class="el-upload__tip" slot="tip">支持 HTML、JSON；单个文件不超过 10MB</div>
           </el-upload>
         </div>
       </div>
@@ -50,15 +50,20 @@
     >
       <div class="export-container">
         <el-alert
-          title="将会导出为HTML格式，可在其他浏览器中导入"
+          title="HTML 可直接导入 Chrome、Edge、Firefox；JSON 适合备份与跨应用交换"
           type="info"
           :closable="false"
           show-icon
         >
         </el-alert>
         <div class="export-options">
-          <el-checkbox v-model="exportAll">导出所有书签</el-checkbox>
-          <div v-if="!exportAll" class="folder-select">
+          <el-alert v-if="exportScope === 'selected'" :title="`将导出已选中的 ${selectedBookmarks.length} 个书签`" type="success" :closable="false" show-icon></el-alert>
+          <el-checkbox v-else v-model="exportAll">导出所有书签</el-checkbox>
+          <el-radio-group v-model="exportFormat" class="format-options">
+            <el-radio label="html">HTML（浏览器兼容）</el-radio>
+            <el-radio label="json">JSON（通用备份）</el-radio>
+          </el-radio-group>
+          <div v-if="exportScope !== 'selected' && !exportAll" class="folder-select">
             <p>选择要导出的文件夹：</p>
             <el-tree
               :data="folderTreeData"
@@ -93,6 +98,8 @@ import { APP_CONSTANTS } from '@/constants';
 import { Validator, SecurityUtils, ErrorHandler, BookmarkValidator } from '@/utils/validation';
 import { DevTools } from '@/utils/devTools';
 
+const { parseBookmarkJSON, generateBookmarkJSON, generateBookmarkHTML } = require('@/utils/bookmarkFormats');
+
 export default {
   name: 'ImportExport',
   props: {
@@ -103,6 +110,14 @@ export default {
     exportDialogVisible: {
       type: Boolean,
       default: false
+    },
+    selectedBookmarks: {
+      type: Array,
+      default: () => []
+    },
+    exportScope: {
+      type: String,
+      default: 'all'
     }
   },
   data() {
@@ -110,6 +125,7 @@ export default {
       fileList: [],
       selectedFile: null,
       exportAll: true,
+      exportFormat: 'html',
       defaultProps: {
         children: 'children',
         label: 'name'
@@ -174,7 +190,7 @@ export default {
       // 验证文件类型
       const validTypes = ['text/html', 'application/octet-stream'];
       if (!validTypes.includes(file.raw.type) && !APP_CONSTANTS.SUPPORTED_FILE_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext))) {
-        this.$message.error('请选择HTML格式的书签文件');
+        this.$message.error('请选择HTML或JSON格式的书签文件');
         return;
       }
 
@@ -207,7 +223,7 @@ export default {
       // 验证文件类型
       const file = this.selectedFile.raw;
       if (!APP_CONSTANTS.SUPPORTED_FILE_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext))) {
-        this.$message.error('请选择HTML格式的书签文件');
+        this.$message.error('请选择HTML或JSON格式的书签文件');
         return;
       }
 
@@ -231,7 +247,8 @@ export default {
           throw new Error('文件内容为空');
         }
 
-        const { bookmarks, folders } = this.parseBookmarkHTML(text);
+        const isJson = file.name.toLowerCase().endsWith('.json');
+        const { bookmarks, folders } = isJson ? parseBookmarkJSON(text) : this.parseBookmarkHTML(text);
 
         if (bookmarks.length === 0 && folders.length === 0) {
           this.$message.warning('未从文件中解析出任何书签或文件夹');
@@ -355,6 +372,7 @@ export default {
                     if (url && this.isValidUrl(url)) {
                       const name = this.sanitizeText(dtChild.textContent || url);
                       const addDate = dtChild.getAttribute('add_date');
+                      const tags = (dtChild.getAttribute('tags') || '').split(',').map(tag => this.sanitizeText(tag)).filter(Boolean);
 
                       // 限制书签名称长度
                       const truncatedName = name.length > APP_CONSTANTS.TEXT_LIMITS.BOOKMARK_NAME ?
@@ -369,6 +387,7 @@ export default {
                         name: truncatedName,
                         url: url.trim(),
                         folderId: parentId,
+                        tags,
                         createdAt
                       });
                     } else {
@@ -404,6 +423,7 @@ export default {
                   name.substring(0, APP_CONSTANTS.TEXT_LIMITS.BOOKMARK_NAME) + '...' : name,
                 url: url.trim(),
                 folderId: 'root',
+                tags: (link.getAttribute('tags') || '').split(',').map(tag => this.sanitizeText(tag)).filter(Boolean),
                 createdAt: new Date().toISOString()
               });
             }
@@ -455,7 +475,18 @@ export default {
         let bookmarksToExport = [];
         let foldersToExport = [];
 
-        if (this.exportAll) {
+        if (this.exportScope === 'selected') {
+          bookmarksToExport = this.selectedBookmarks.slice();
+          const folderIds = new Set(['root']);
+          bookmarksToExport.forEach(bookmark => {
+            let folder = this.folders.find(item => item.id === bookmark.folderId);
+            while (folder) {
+              folderIds.add(folder.id);
+              folder = folder.parentId ? this.folders.find(item => item.id === folder.parentId) : null;
+            }
+          });
+          foldersToExport = this.folders.filter(folder => folderIds.has(folder.id));
+        } else if (this.exportAll) {
           // 导出所有书签和文件夹
           bookmarksToExport = this.bookmarks;
           foldersToExport = this.folders;
@@ -513,15 +544,19 @@ export default {
           return;
         }
 
-        // 生成HTML
-        const html = this.generateBookmarkHTML(bookmarksToExport, foldersToExport);
+        const isJson = this.exportFormat === 'json';
+        const content = isJson
+          ? generateBookmarkJSON(bookmarksToExport, foldersToExport)
+          : generateBookmarkHTML(bookmarksToExport, foldersToExport);
 
         // 创建下载链接
-        const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+        const extension = isJson ? 'json' : 'html';
+        const mimeType = isJson ? 'application/json; charset=utf-8' : 'text/html; charset=utf-8';
+        const blob = new Blob([content], { type: mimeType });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `bookmarks_${new Date().toISOString().split('T')[0]}.html`;
+        a.download = `bookmarks_${new Date().toISOString().split('T')[0]}.${extension}`;
 
         // 确保元素被添加到DOM中，某些浏览器需要这个
         a.style.display = 'none';
@@ -596,8 +631,9 @@ export default {
               const addDate = Math.floor(new Date(bookmark.createdAt).getTime() / 1000);
               const escapedName = this.escapeHtml(bookmark.name);
               const escapedUrl = this.escapeHtml(bookmark.url);
+              const tagsAttribute = Array.isArray(bookmark.tags) && bookmark.tags.length ? ` TAGS="${this.escapeHtml(bookmark.tags.join(','))}"` : '';
 
-              folderHTML += `${spaces}    <DT><A HREF="${escapedUrl}" ADD_DATE="${addDate}">${escapedName}</A>\n`;
+              folderHTML += `${spaces}    <DT><A HREF="${escapedUrl}" ADD_DATE="${addDate}"${tagsAttribute}>${escapedName}</A>\n`;
             } catch (error) {
               DevTools.warn('生成书签HTML时出错:', error);
             }
@@ -625,8 +661,9 @@ export default {
               const addDate = Math.floor(new Date(bookmark.createdAt).getTime() / 1000);
               const escapedName = this.escapeHtml(bookmark.name);
               const escapedUrl = this.escapeHtml(bookmark.url);
+              const tagsAttribute = Array.isArray(bookmark.tags) && bookmark.tags.length ? ` TAGS="${this.escapeHtml(bookmark.tags.join(','))}"` : '';
 
-              html += `    <DT><A HREF="${escapedUrl}" ADD_DATE="${addDate}">${escapedName}</A>\n`;
+              html += `    <DT><A HREF="${escapedUrl}" ADD_DATE="${addDate}"${tagsAttribute}>${escapedName}</A>\n`;
             } catch (error) {
               DevTools.warn('生成根书签HTML时出错:', error);
             }

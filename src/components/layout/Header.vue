@@ -96,6 +96,11 @@
           </el-dropdown-menu>
         </el-dropdown>
       </el-button-group>
+      <el-tooltip :content="isDarkMode ? '切换浅色模式' : '切换深色模式'" placement="bottom">
+        <el-button class="theme-toggle" size="small" :icon="isDarkMode ? 'el-icon-sunny' : 'el-icon-moon'" @click="toggleTheme">
+          {{ isDarkMode ? '浅色' : '深色' }}
+        </el-button>
+      </el-tooltip>
     </div>
   </div>
 </template>
@@ -124,6 +129,8 @@ export default {
   },
   computed: {
     ...mapState('bookmarks', ['history', 'currentHistoryIndex']),
+    ...mapState('preferences', ['theme']),
+    isDarkMode() { return this.theme === 'dark'; },
     canUndo() {
       return this.currentHistoryIndex >= 0;
     },
@@ -154,6 +161,7 @@ export default {
   },
   methods: {
     ...mapActions('bookmarks', ['undo', 'redo']),
+    ...mapActions('preferences', ['toggleTheme']),
 
     // 安全处理搜索
     handleSearch() {

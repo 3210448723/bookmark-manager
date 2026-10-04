@@ -8,6 +8,10 @@
 - [x] 面包屑支持点击跳转、后退/前进和最近访问路径快捷跳转。
 - [x] 核心状态、导入批次、排序函数和虚拟列表补充中文注释、JSDoc 与可执行类型检查。
 - [x] `npm test`、`npm run typecheck`、`npm run lint` 和 `npm run build` 均通过。
+- [x] 深色模式切换与持久化主题偏好。
+- [x] 选定书签健康度探测，保存 HTTP 状态/错误并对不可达书签标红。
+- [x] 批量移动、添加标签、导出选中书签。
+- [x] Chrome/Edge/Firefox HTML 与 JSON 书签格式双向转换。
 
 ## 验证入口
 

@@ -2,12 +2,14 @@ import Vue from 'vue'
 import Vuex from 'vuex'
 import createPersistedState from 'vuex-persistedstate'
 import bookmarks from './modules/bookmarks'
+import preferences from './modules/preferences'
 
 Vue.use(Vuex)
 
 export default new Vuex.Store({
   modules: {
-    bookmarks
+    bookmarks,
+    preferences
   },
   plugins: [
     createPersistedState({
@@ -22,6 +24,9 @@ export default new Vuex.Store({
             history: state.bookmarks.history,
             currentHistoryIndex: state.bookmarks.currentHistoryIndex,
             sortHistory: state.bookmarks.sortHistory
+          },
+          preferences: {
+            theme: state.preferences.theme
           }
         };
       },

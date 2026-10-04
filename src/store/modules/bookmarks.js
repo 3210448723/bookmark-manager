@@ -13,9 +13,16 @@ import { DevTools } from '@/utils/devTools';
 
 const { createSortComparator, normalizeSortFunction } = require('@/utils/sortFunction');
 const { createImportBatch } = require('@/utils/importBatch');
+const { probeBookmarks } = require('@/utils/healthCheck');
 
 /** @returns {string} 低碰撞概率的本地 ID */
 const generateId = (prefix = 'item') => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+
+/** 统一标签数据，避免数组中出现 HTML、重复值或过长输入。 */
+const normalizeTags = (tags) => {
+  const values = Array.isArray(tags) ? tags : String(tags || '').split(/[\n,]/);
+  return Array.from(new Set(values.map(tag => SecurityUtils.sanitizeInput(tag).slice(0, 50)).filter(Boolean))).slice(0, 30);
+};
 
 /** 清除依赖书签路径和排序的派生缓存。 */
 const clearCache = (state) => {
@@ -37,6 +44,7 @@ const sanitizeBookmark = (bookmark, requireId = false) => {
     name: SecurityUtils.sanitizeInput(bookmark.name || ''),
     url: SecurityUtils.sanitizeUrl(bookmark.url || ''),
     description: SecurityUtils.sanitizeInput(bookmark.description || ''),
+    tags: normalizeTags(bookmark.tags),
     folderId: Validator.isValidId(bookmark.folderId) ? bookmark.folderId : 'root'
   };
 
@@ -100,6 +108,8 @@ const state = {
   selectedItems: [],
   invalidBookmarks: [],
   duplicateBookmarks: [],
+  // 健康度是临时探测结果，不写入持久化书签，刷新后可重新检测。
+  healthResults: {},
   // 操作历史只保存数据快照，不保存函数引用，确保 vuex-persistedstate 可以正确序列化。
   history: [],
   currentHistoryIndex: -1,
@@ -146,6 +156,7 @@ const getters = {
 
   getInvalidBookmarks: (moduleState) => moduleState.invalidBookmarks,
   getDuplicateBookmarks: (moduleState) => moduleState.duplicateBookmarks,
+  getHealthResult: (moduleState) => (bookmarkId) => moduleState.healthResults[bookmarkId] || null,
   getSelectedItems: (moduleState) => moduleState.selectedItems,
   getSortHistory: (moduleState) => moduleState.sortHistory,
 
@@ -306,6 +317,25 @@ const mutations = {
   CLEAR_SELECTED_ITEMS(moduleState) { moduleState.selectedItems = []; },
   SET_INVALID_BOOKMARKS(moduleState, bookmarks) { moduleState.invalidBookmarks = bookmarks || []; },
   SET_DUPLICATE_BOOKMARKS(moduleState, bookmarks) { moduleState.duplicateBookmarks = bookmarks || []; },
+  SET_HEALTH_RESULTS(moduleState, results) {
+    const next = { ...moduleState.healthResults };
+    (results || []).forEach(result => {
+      if (result && result.bookmarkId) next[result.bookmarkId] = result;
+    });
+    moduleState.healthResults = next;
+  },
+  CLEAR_HEALTH_RESULTS(moduleState) { moduleState.healthResults = {}; },
+
+  BULK_ADD_TAGS(moduleState, { itemIds, tags }) {
+    const ids = new Set(itemIds || []);
+    const additions = normalizeTags(tags);
+    moduleState.bookmarks.forEach(bookmark => {
+      if (!ids.has(bookmark.id)) return;
+      const currentTags = Array.isArray(bookmark.tags) ? bookmark.tags : (bookmark.tags ? [bookmark.tags] : []);
+      bookmark.tags = normalizeTags([...currentTags, ...additions]);
+    });
+    clearCache(moduleState);
+  },
 
   TOGGLE_FOLDER_EXPANSION(moduleState, folderId) {
     const folder = moduleState.folders.find(item => item.id === folderId);
@@ -348,6 +378,7 @@ const mutations = {
     moduleState.selectedItems = [];
     moduleState.invalidBookmarks = [];
     moduleState.duplicateBookmarks = [];
+    moduleState.healthResults = {};
     clearCache(moduleState);
   },
   RESET_HISTORY(moduleState) { moduleState.history = []; moduleState.currentHistoryIndex = -1; moduleState.lastOperation = null; }
@@ -431,6 +462,26 @@ const actions = {
   clearSelectedItems({ commit }) { commit('CLEAR_SELECTED_ITEMS'); return Promise.resolve(); },
   toggleFolderExpansion({ commit }, folderId) { commit('TOGGLE_FOLDER_EXPANSION', folderId); return Promise.resolve(); },
 
+  bulkAddTags({ commit, state: moduleState }, { itemIds, tags }) {
+    const ids = (itemIds || []).filter(id => moduleState.bookmarks.some(bookmark => bookmark.id === id));
+    const originalTags = {};
+    ids.forEach(id => {
+      const bookmark = moduleState.bookmarks.find(item => item.id === id);
+      originalTags[id] = (bookmark.tags || []).slice();
+    });
+    commit('BULK_ADD_TAGS', { itemIds: ids, tags });
+    const changed = ids.some(id => {
+      const bookmark = moduleState.bookmarks.find(item => item.id === id);
+      return JSON.stringify(bookmark && bookmark.tags) !== JSON.stringify(originalTags[id]);
+    });
+    if (changed) commit('ADD_OPERATION', {
+      type: 'bulkAddTags',
+      description: `为 ${ids.length} 个书签添加标签`,
+      data: { itemIds: ids, tags, originalTags }
+    });
+    return Promise.resolve();
+  },
+
   sortBookmarksByName(context, folderId) { return runSort(context, folderId, (a, b) => a.name.localeCompare(b.name), '按名称排序'); },
   sortBookmarksByUrl(context, folderId) { return runSort(context, folderId, (a, b) => a.url.localeCompare(b.url), '按 URL 排序'); },
   sortBookmarksByDate(context, folderId) { return runSort(context, folderId, (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(), '按添加日期排序'); },
@@ -490,6 +541,7 @@ const actions = {
       const original = data.originalState[id];
       commit('MOVE_ITEMS', { itemIds: [id], targetFolderId: data.itemType === 'bookmark' ? original.folderId : original.parentId, itemType: data.itemType });
     });
+    else if (operation.type === 'bulkAddTags') Object.keys(data.originalTags || {}).forEach(id => commit('UPDATE_BOOKMARK', { id, updates: { tags: data.originalTags[id] } }));
     else if (operation.type === 'import') commit('REMOVE_IMPORTED_CONTENT', { folderIds: data.folderIds, bookmarkIds: data.bookmarkIds });
     commit('UPDATE_HISTORY_INDEX', moduleState.currentHistoryIndex - 1);
     return Promise.resolve(true);
@@ -502,6 +554,7 @@ const actions = {
     const data = operation.data || {};
     if (operation.type === 'sort' || operation.type === 'reorder') commit('APPLY_BOOKMARK_ORDER', { folderId: data.folderId, orderIds: data.afterOrder });
     else if (operation.type === 'moveItems') commit('MOVE_ITEMS', { itemIds: data.itemIds, targetFolderId: data.targetFolderId, itemType: data.itemType });
+    else if (operation.type === 'bulkAddTags') commit('BULK_ADD_TAGS', { itemIds: data.itemIds, tags: data.tags });
     else if (operation.type === 'import') commit('RESTORE_IMPORTED_CONTENT', { folders: data.folders, bookmarks: data.bookmarks });
     commit('UPDATE_HISTORY_INDEX', nextIndex);
     return Promise.resolve(true);
@@ -510,28 +563,24 @@ const actions = {
   redoOperation({ dispatch }) { return dispatch('redo'); },
 
   checkInvalidBookmarks({ commit, state: moduleState }) {
-    const check = async () => {
-      const invalid = [];
-      for (let index = 0; index < moduleState.bookmarks.length; index += 10) {
-        const batch = moduleState.bookmarks.slice(index, index + 10);
-        const result = await Promise.all(batch.map(async bookmark => {
-          const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-          const timeoutId = setTimeout(() => controller && controller.abort(), 3000);
-          try {
-            const response = await fetch(bookmark.url, { method: 'HEAD', signal: controller ? controller.signal : undefined });
-            return response.ok ? null : bookmark;
-          } catch (error) {
-            return bookmark;
-          } finally {
-            clearTimeout(timeoutId);
-          }
-        }));
-        invalid.push(...result.filter(Boolean));
-      }
+    return probeBookmarks(moduleState.bookmarks, { timeout: 5000, concurrency: 4 }).then(results => {
+      commit('SET_HEALTH_RESULTS', results);
+      const invalidIds = new Set(results.filter(result => !result.reachable).map(result => result.bookmarkId));
+      const invalid = moduleState.bookmarks.filter(bookmark => invalidIds.has(bookmark.id));
       commit('SET_INVALID_BOOKMARKS', invalid);
       return invalid;
-    };
-    return check();
+    });
+  },
+
+  checkBookmarkHealth({ commit, state: moduleState }, payload = {}) {
+    const ids = payload.ids;
+    const timeout = payload.timeout === undefined ? 5000 : payload.timeout;
+    const idSet = Array.isArray(ids) && ids.length ? new Set(ids) : null;
+    const targets = moduleState.bookmarks.filter(bookmark => !idSet || idSet.has(bookmark.id));
+    return probeBookmarks(targets, { timeout, concurrency: 4 }).then(results => {
+      commit('SET_HEALTH_RESULTS', results);
+      return results;
+    });
   },
 
   checkDuplicateBookmarks({ commit, state: moduleState }) {

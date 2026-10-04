@@ -4,7 +4,7 @@ export const APP_CONSTANTS = {
   MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
   
   // 支持的文件扩展名
-  SUPPORTED_FILE_EXTENSIONS: ['.html', '.htm'],
+  SUPPORTED_FILE_EXTENSIONS: ['.html', '.htm', '.json'],
   
   // 防抖延迟
   DEBOUNCE_DELAY: {

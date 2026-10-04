@@ -1,5 +1,5 @@
 <template>
-  <div id="app">
+  <div id="app" :class="{ 'dark-mode': isDarkMode }">
     <div class="app-container">
       <Header
         :folders="folders"
@@ -14,6 +14,7 @@
         @navigate-by-path="navigateByPath"
         @search-paths="searchPaths"
         @navigate-to-folder="handleFolderSelected"
+        @toggle-theme="toggleTheme"
       />
 
       <div class="main-content">
@@ -35,6 +36,7 @@
             :navigation-history-index="navigationHistoryIndex"
             @folder-selected="handleFolderSelected"
             @navigate-history="navigateHistory"
+            @export-selected="showSelectedExportDialog"
           />
         </div>
       </div>
@@ -75,7 +77,12 @@
       <span slot="footer"><el-button @click="searchResultsDialogVisible = false">关闭</el-button></span>
     </el-dialog>
 
-    <ImportExport :import-dialog-visible.sync="importDialogVisible" :export-dialog-visible.sync="exportDialogVisible" />
+    <ImportExport
+      :import-dialog-visible.sync="importDialogVisible"
+      :export-dialog-visible.sync="exportDialogVisible"
+      :selected-bookmarks="selectedBookmarksForExport"
+      :export-scope="exportScope"
+    />
   </div>
 </template>
 
@@ -117,11 +124,13 @@ export default {
       sidebarWidth: 250,
       isResizing: false,
       searchPathsTimer: null,
-      activeNotifications: new Map()
+      activeNotifications: new Map(),
+      selectedBookmarksForExport: [],
+      exportScope: 'all'
     };
   },
   computed: {
-    ...mapState({ folders: state => state.bookmarks.folders, lastOperation: state => state.bookmarks.lastOperation }),
+    ...mapState({ folders: state => state.bookmarks.folders, lastOperation: state => state.bookmarks.lastOperation, theme: state => state.preferences.theme }),
     ...mapGetters('bookmarks', ['getFolderPath', 'getFoldersByParentId']),
     folderOptions() {
       const result = [];
@@ -134,7 +143,8 @@ export default {
       const root = this.folders.find(folder => folder.id === 'root');
       if (root) visit(root, new Set());
       return result;
-    }
+    },
+    isDarkMode() { return this.theme === 'dark'; }
   },
   watch: {
     lastOperation(operation) {
@@ -142,10 +152,18 @@ export default {
       searchService.clearCache();
       const notification = this.$notify({ title: '操作完成', message: `${this.safeText(operation.description || '操作')}，可通过顶部撤销按钮回退`, type: 'info', duration: 3500 });
       this.activeNotifications.set(operation.id, notification);
+    },
+    isDarkMode: {
+      immediate: true,
+      handler(value) { this.applyThemeToBody(value); }
+    },
+    exportDialogVisible(value) {
+      if (!value) { this.exportScope = 'all'; this.selectedBookmarksForExport = []; }
     }
   },
   methods: {
     ...mapActions('bookmarks', ['addFolder', 'sortBookmarksCustom', 'checkInvalidBookmarks', 'checkDuplicateBookmarks', 'resetAll']),
+    ...mapActions('preferences', ['toggleTheme']),
     safeText(text) { return Validator.isEmpty(text) ? '' : SecurityUtils.stripHtml(String(text)); },
     validateFolderName(rule, value, callback) {
       const name = SecurityUtils.sanitizeInput(value || '');
@@ -215,6 +233,12 @@ export default {
     },
     showImportDialog() { this.importDialogVisible = true; },
     showExportDialog() { this.exportDialogVisible = true; },
+    showSelectedExportDialog(bookmarks) {
+      this.selectedBookmarksForExport = Array.isArray(bookmarks) ? bookmarks.slice() : [];
+      if (!this.selectedBookmarksForExport.length) return this.$message.warning('请先选择要导出的书签');
+      this.exportScope = 'selected';
+      this.exportDialogVisible = true;
+    },
     async checkInvalidBookmarks() {
       this.$message.info('正在检测无效书签，请稍候…');
       const result = await this.$store.dispatch('bookmarks/checkInvalidBookmarks');
@@ -276,9 +300,15 @@ export default {
     },
     initResize(event) { this.isResizing = true; document.addEventListener('mousemove', this.handleResize); document.addEventListener('mouseup', this.stopResize); event.preventDefault(); },
     handleResize(event) { if (!this.isResizing) return; const max = Math.max(APP_CONSTANTS.LAYOUT.SIDEBAR_MIN_WIDTH, window.innerWidth - APP_CONSTANTS.LAYOUT.SIDEBAR_MAX_OFFSET); this.sidebarWidth = Math.max(APP_CONSTANTS.LAYOUT.SIDEBAR_MIN_WIDTH, Math.min(max, event.clientX)); },
-    stopResize() { this.isResizing = false; document.removeEventListener('mousemove', this.handleResize); document.removeEventListener('mouseup', this.stopResize); }
+    stopResize() { this.isResizing = false; document.removeEventListener('mousemove', this.handleResize); document.removeEventListener('mouseup', this.stopResize); },
+    applyThemeToBody(isDark) {
+      if (typeof document !== 'undefined') document.body.classList.toggle('dark-mode', Boolean(isDark));
+    }
   },
-  mounted() { this.$store.dispatch('bookmarks/initializeBookmarkOrder').catch(error => ErrorHandler.formatError(error, '初始化书签顺序失败')); },
+  mounted() {
+    this.$store.dispatch('bookmarks/initializeBookmarkOrder').catch(error => ErrorHandler.formatError(error, '初始化书签顺序失败'));
+    this.applyThemeToBody(this.isDarkMode);
+  },
   beforeDestroy() { if (this.searchPathsTimer) clearTimeout(this.searchPathsTimer); this.stopResize(); this.activeNotifications.forEach(notification => notification && notification.close && notification.close()); searchService.cleanup(); }
 };
 </script>
@@ -297,5 +327,33 @@ body { font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Microsoft YaHei
 .search-results-dialog { max-width: calc(100vw - 24px); }
 .search-result-summary { margin-bottom: 12px; color: #606266; }
 .search-result-name { color: #303133; font-weight: 500; }
+.health-failed-row > td { background: #fef0f0 !important; }
 @media (max-width: 900px) { .resizer { display: none; } }
+
+/* 深色模式覆盖 Element UI 与各页面的基础背景，主题选择由 Vuex 持久化。 */
+body.dark-mode { background: #111827; color: #e5e7eb; }
+body.dark-mode .app-container, body.dark-mode .content-container, body.dark-mode .bookmark-list { background: #111827; color: #e5e7eb; }
+body.dark-mode .header { background: #1f2937; border-color: #374151; }
+body.dark-mode .sidebar { background: #1f2937; border-color: #374151; }
+body.dark-mode .sidebar-header, body.dark-mode .sidebar-footer { border-color: #374151; }
+body.dark-mode .sidebar-header h2 { color: #f3f4f6; }
+body.dark-mode .special-folder:hover, body.dark-mode .suggestion-item:hover { background: #263449; }
+body.dark-mode .logo h1, body.dark-mode .search-result-name { color: #f3f4f6; }
+body.dark-mode .resizer { background: #374151; }
+body.dark-mode .resizer:hover { background: #4b5563; }
+body.dark-mode .el-table, body.dark-mode .el-table th, body.dark-mode .el-table tr, body.dark-mode .el-table__expanded-cell { background: #1f2937; color: #e5e7eb; }
+body.dark-mode .el-table th, body.dark-mode .el-table td { border-color: #374151; }
+body.dark-mode .el-table--enable-row-hover .el-table__body tr:hover > td, body.dark-mode .el-table__body tr.hover-row > td { background: #263449; }
+body.dark-mode .el-breadcrumb__inner, body.dark-mode .el-breadcrumb__inner a, body.dark-mode .el-pagination, body.dark-mode .path-tip, body.dark-mode .search-result-summary { color: #cbd5e1; }
+body.dark-mode .pagination-container { background: #111827; }
+body.dark-mode .bookmark-name:hover, body.dark-mode .virtual-bookmark-row:hover { background: #263449; }
+body.dark-mode .virtual-bookmark-row { border-color: #374151; }
+body.dark-mode .bookmark-title, body.dark-mode .bookmark-url, body.dark-mode .virtual-bookmark-path, body.dark-mode .virtual-bookmark-date { color: #d1d5db; }
+body.dark-mode .sort-instruction { background: #172554; border-color: #1e40af; color: #bfdbfe; }
+body.dark-mode .el-dialog, body.dark-mode .el-message-box, body.dark-mode .el-popover, body.dark-mode .el-dropdown-menu, body.dark-mode .el-select-dropdown { background: #1f2937; border-color: #374151; color: #e5e7eb; }
+body.dark-mode .el-dialog__title, body.dark-mode .el-form-item__label, body.dark-mode .el-dialog__body, body.dark-mode .el-dropdown-menu__item, body.dark-mode .el-select-dropdown__item { color: #e5e7eb; }
+body.dark-mode .el-input__inner, body.dark-mode .el-textarea__inner { background: #111827; border-color: #4b5563; color: #f3f4f6; }
+body.dark-mode .el-tree, body.dark-mode .el-tree-node__content { background: #1f2937; color: #e5e7eb; }
+body.dark-mode .el-tree-node__content:hover, body.dark-mode .el-select-dropdown__item.hover { background: #263449; }
+body.dark-mode .health-failed-row > td, body.dark-mode .health-failed-row { background: #3b2025 !important; }
 </style>
