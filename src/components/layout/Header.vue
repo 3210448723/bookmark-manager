@@ -38,9 +38,9 @@
           <div v-if="pathSuggestions.length > 0" class="path-suggestions">
             <p>可能的路径：</p>
             <ul class="suggestion-list">
-              <li 
-                v-for="(suggestion, index) in pathSuggestions" 
-                :key="index" 
+              <li
+                v-for="(suggestion, index) in pathSuggestions"
+                :key="index"
                 @click="selectSuggestion(suggestion)"
                 class="suggestion-item"
                 :title="suggestion.pathString"
@@ -55,16 +55,16 @@
     </div>
     <div class="actions">
       <el-button-group>
-        <el-button 
-          :disabled="!canUndo" 
-          @click="handleUndo" 
+        <el-button
+          :disabled="!canUndo"
+          @click="handleUndo"
           icon="el-icon-refresh-left"
           size="small"
           title="撤销"
         ></el-button>
-        <el-button 
-          :disabled="!canRedo" 
-          @click="handleRedo" 
+        <el-button
+          :disabled="!canRedo"
+          @click="handleRedo"
           icon="el-icon-refresh-right"
           size="small"
           title="重做"
@@ -154,7 +154,7 @@ export default {
   },
   methods: {
     ...mapActions('bookmarks', ['undo', 'redo']),
-    
+
     // 安全处理搜索
     handleSearch() {
       return ErrorHandler.safeExecute(() => {
@@ -165,35 +165,35 @@ export default {
         }
       }, '搜索操作失败');
     },
-    
+
     // 验证和清理搜索查询
     validateAndSanitizeSearchQuery(query) {
       if (Validator.isEmpty(query)) {
         return '';
       }
-      
+
       // 限制搜索查询长度
       if (query.length > APP_CONSTANTS.TEXT_LIMITS.BOOKMARK_NAME) {
         this.$message.warning(`搜索内容不能超过${APP_CONSTANTS.TEXT_LIMITS.BOOKMARK_NAME}个字符`);
         return null;
       }
-      
+
       // 清理和转义输入
       return SecurityUtils.sanitizeInput(query);
     },
-    
+
     showAddBookmarkDialog() {
       return ErrorHandler.safeExecute(() => {
         this.$emit('add-bookmark');
       }, '打开添加书签对话框失败');
     },
-    
+
     showAddFolderDialog() {
       return ErrorHandler.safeExecute(() => {
         this.$emit('add-folder');
       }, '打开添加文件夹对话框失败');
     },
-    
+
     handleCommand(command) {
       return ErrorHandler.safeExecute(() => {
         // 验证命令
@@ -201,49 +201,51 @@ export default {
           this.$message.error('无效的操作命令');
           return;
         }
-        
+
         this.$emit(command);
       }, '执行操作命令失败');
     },
-    
+
     // 验证命令是否合法
     isValidCommand(command) {
       const validCommands = [
-        'importBookmarks', 
-        'exportBookmarks', 
-        'checkInvalid', 
-        'checkDuplicate', 
+        'importBookmarks',
+        'exportBookmarks',
+        'checkInvalid',
+        'checkDuplicate',
         'resetAll'
       ];
       return validCommands.includes(command);
     },
-    
-    handleUndo() {
+
+    async handleUndo() {
       return ErrorHandler.safeExecute(() => {
         if (this.canUndo) {
+          const description = this.currentOperation;
           this.undo();
           this.$message({
             type: 'success',
-            message: `已撤销: ${this.currentOperation}`,
+            message: `已撤销: ${description}`,
             duration: 1500
           });
         }
       }, '撤销操作失败');
     },
-    
-    handleRedo() {
+
+    async handleRedo() {
       return ErrorHandler.safeExecute(() => {
         if (this.canRedo) {
+          const description = this.nextOperation;
           this.redo();
           this.$message({
             type: 'success',
-            message: `已重做: ${this.nextOperation}`,
+            message: `已重做: ${description}`,
             duration: 1500
           });
         }
       }, '重做操作失败');
     },
-    
+
     navigateByPath() {
       return ErrorHandler.safeExecute(() => {
         // 验证和清理路径输入
@@ -251,63 +253,63 @@ export default {
         if (cleanPath === null) {
           return;
         }
-        
+
         if (Validator.isEmpty(cleanPath)) {
           this.$message.warning('请输入有效的路径');
           return;
         }
-        
+
         // 发送路径导航事件
         this.$emit('navigate-by-path', cleanPath);
-        
+
         // 清空路径输入并关闭弹窗
         this.pathInput = '';
         this.showPathNavigator = false;
       }, '路径导航失败');
     },
-    
+
     // 验证和清理路径输入
     validateAndSanitizePathInput(pathInput) {
       if (Validator.isEmpty(pathInput)) {
         return '';
       }
-      
+
       // 限制路径长度
       if (pathInput.length > APP_CONSTANTS.TEXT_LIMITS.FILE_NAME) {
         this.$message.warning(`路径长度不能超过${APP_CONSTANTS.TEXT_LIMITS.FILE_NAME}个字符`);
         return null;
       }
-      
+
       // 检查危险字符
       const dangerousChars = ['<', '>', '"', '\'', '&'];
       if (dangerousChars.some(char => pathInput.includes(char))) {
         this.$message.warning('路径包含非法字符');
         return null;
       }
-      
+
       // 清理和规范化路径
       return SecurityUtils.sanitizeInput(pathInput.trim());
     },
-    
+
     searchPaths() {
       return ErrorHandler.safeExecute(() => {
         // 清除之前的定时器
         if (this.pathSearchTimer) {
           clearTimeout(this.pathSearchTimer);
         }
-        
+
         if (Validator.isEmpty(this.pathInput)) {
           this.pathSuggestions = [];
           return;
         }
-        
+
         // 验证路径输入
         const cleanPath = this.validateAndSanitizePathInput(this.pathInput);
         if (cleanPath === null) {
           this.pathSuggestions = [];
           return;
         }
-        
+
         // 添加防抖，减少频繁调用
         this.pathSearchTimer = setTimeout(() => {
           // 请求路径建议
@@ -318,24 +320,25 @@ export default {
         }, APP_CONSTANTS.DEBOUNCE_DELAY.SEARCH);
       }, '搜索路径失败');
     },
-    
+
     // 验证路径建议
     validatePathSuggestions(suggestions) {
       if (!Validator.isValidArray(suggestions)) {
         return [];
       }
-      
+
       return suggestions.filter(suggestion => {
-        return suggestion && 
-               Validator.isValidId(suggestion.id) && 
+        return suggestion &&
+               Validator.isValidId(suggestion.id) &&
                typeof suggestion.pathString === 'string' &&
                suggestion.pathString.length <= APP_CONSTANTS.TEXT_LIMITS.FILE_NAME;
       }).map(suggestion => ({
         id: suggestion.id,
-        pathString: SecurityUtils.escapeHtml(suggestion.pathString)
+        // 使用普通文本插值显示，不需要预先转义，否则会出现双重实体编码。
+        pathString: suggestion.pathString
       }));
     },
-    
+
     selectSuggestion(suggestion) {
       return ErrorHandler.safeExecute(() => {
         // 验证建议项
@@ -343,14 +346,14 @@ export default {
           this.$message.error('无效的路径建议');
           return;
         }
-        
+
         // 选择建议的路径并跳转
         this.$emit('navigate-to-folder', suggestion.id);
         this.pathInput = '';
         this.showPathNavigator = false;
       }, '选择路径建议失败');
     },
-    
+
     // 安全清理方法
     safeCleanup() {
       if (this.pathSearchTimer) {
@@ -364,7 +367,7 @@ export default {
     pathInput() {
       this.searchPaths();
     },
-    
+
     // 监听搜索查询变化，添加安全验证
     searchQuery(newVal) {
       if (newVal && newVal.length > APP_CONSTANTS.TEXT_LIMITS.BOOKMARK_NAME) {
@@ -375,7 +378,7 @@ export default {
       }
     }
   },
-  
+
   // 添加组件销毁时的清理
   beforeDestroy() {
     this.safeCleanup();
@@ -447,4 +450,4 @@ export default {
 .actions {
   flex: 0 0 auto;
 }
-</style> 
+</style>

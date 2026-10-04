@@ -12,14 +12,23 @@ export default new Vuex.Store({
   plugins: [
     createPersistedState({
       key: 'bookmark-manager',
-      paths: ['bookmarks'],
-      // 自定义还原器，确保 Set 对象正确初始化
+      // 只持久化用户数据和可撤销快照，排除路径缓存/选中状态，避免 localStorage
+      // 随大书签列表成倍膨胀，也避免刷新后弹出一条过期的操作通知。
+      reducer(state) {
+        return {
+          bookmarks: {
+            bookmarks: state.bookmarks.bookmarks,
+            folders: state.bookmarks.folders,
+            history: state.bookmarks.history,
+            currentHistoryIndex: state.bookmarks.currentHistoryIndex,
+            sortHistory: state.bookmarks.sortHistory
+          }
+        };
+      },
       rehydrated(store) {
-        // 确保 undoneOperationIds 是 Set 对象
-        if (store.state.bookmarks.undoneOperationIds && !(store.state.bookmarks.undoneOperationIds instanceof Set)) {
-          store.commit('bookmarks/INIT_UNDONE_OPERATION_IDS');
-        }
+        // 清理旧版本可能留下的函数型历史记录，并恢复可用的索引范围。
+        store.dispatch('bookmarks/repairPersistedHistory');
       }
     })
   ]
-}) 
+})

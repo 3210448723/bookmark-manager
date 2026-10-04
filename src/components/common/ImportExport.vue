@@ -137,10 +137,10 @@ export default {
           };
         });
       };
-      
+
       const rootFolder = this.folders.find(f => f.id === 'root');
       if (!rootFolder) return [];
-      
+
       return [{
         ...rootFolder,
         children: buildTree('root')
@@ -170,26 +170,26 @@ export default {
         this.$message.error('文件信息无效');
         return;
       }
-      
+
       // 验证文件类型
       const validTypes = ['text/html', 'application/octet-stream'];
-      if (!validTypes.includes(file.raw.type) && !file.name.toLowerCase().endsWith('.html')) {
+      if (!validTypes.includes(file.raw.type) && !APP_CONSTANTS.SUPPORTED_FILE_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext))) {
         this.$message.error('请选择HTML格式的书签文件');
         return;
       }
-      
+
       // 验证文件大小
       if (file.raw.size > APP_CONSTANTS.MAX_FILE_SIZE) {
         this.$message.error(`文件大小不能超过${Math.round(APP_CONSTANTS.MAX_FILE_SIZE / 1024 / 1024)}MB`);
         return;
       }
-      
+
       // 验证文件名安全性
       if (!Validator.isSafeFileName(file.name)) {
         this.$message.error('文件名包含非法字符');
         return;
       }
-      
+
       this.selectedFile = file;
     },
     closeImportDialog() {
@@ -203,40 +203,42 @@ export default {
         this.$message.warning('请选择要导入的文件');
         return;
       }
-      
+
       // 验证文件类型
       const file = this.selectedFile.raw;
       if (!APP_CONSTANTS.SUPPORTED_FILE_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext))) {
         this.$message.error('请选择HTML格式的书签文件');
         return;
       }
-      
+
       // 验证文件大小
       if (file.size > APP_CONSTANTS.MAX_FILE_SIZE) {
         this.$message.error('文件大小不能超过10MB');
         return;
       }
-      
+
+      let loadingInstance;
       try {
-        this.$loading({
+        loadingInstance = this.$loading({
           text: '正在解析书签文件...',
           spinner: 'el-icon-loading'
         });
-        
+
         const text = await this.readFileAsText(file);
-        
+
         // 验证文件内容
         if (!text || text.trim().length === 0) {
           throw new Error('文件内容为空');
         }
-        
+
         const { bookmarks, folders } = this.parseBookmarkHTML(text);
-        
+
         if (bookmarks.length === 0 && folders.length === 0) {
           this.$message.warning('未从文件中解析出任何书签或文件夹');
+          loadingInstance.close();
           return;
         }
-        
+
         // 验证书签URL格式并应用安全检查
         const validBookmarks = bookmarks.filter(bookmark => {
           // 使用我们的验证工具
@@ -245,31 +247,33 @@ export default {
             DevTools.warn(`无效的书签: ${bookmark.name}`, validation.errors);
             return false;
           }
-          
+
           // 额外的URL验证
           if (!Validator.isValidUrl(bookmark.url)) {
             DevTools.warn(`无效的URL: ${bookmark.url}`);
             return false;
           }
-          
+
           return true;
         });
-        
+
         if (validBookmarks.length !== bookmarks.length) {
           this.$message.warning(`已过滤掉 ${bookmarks.length - validBookmarks.length} 个无效URL的书签`);
         }
-        
+
         // 导入书签
-        await this.importBookmarks({ 
-          bookmarks: validBookmarks, 
-          folders: folders.filter(f => f.id !== 'root') // 过滤掉根文件夹
+        // 每次导入都传入独立的分组名称，store 会继续重映射内部 ID，避免同名目录合并。
+        await this.importBookmarks({
+          bookmarks: validBookmarks,
+          folders: folders.filter(f => f.id !== 'root'),
+          importRootName: this.createImportRootName(file.name)
         });
-        
-        this.$loading().close();
+
+        loadingInstance.close();
         this.$message.success(`成功导入 ${validBookmarks.length} 个书签和 ${folders.length} 个文件夹`);
         this.$emit('update:importDialogVisible', false);
       } catch (error) {
-        this.$loading().close();
+        if (loadingInstance) loadingInstance.close();
         DevTools.error('导入错误', error);
         this.$message.error('导入失败: ' + (error.message || '未知错误'));
       }
@@ -282,23 +286,28 @@ export default {
         reader.readAsText(file);
       });
     },
+    /** 将文件名转换为可读且稳定的导入根分组名称。 */
+    createImportRootName(fileName) {
+      const baseName = String(fileName || '书签').replace(/\.html?$/i, '').trim();
+      return `导入：${this.sanitizeText(baseName).slice(0, APP_CONSTANTS.TEXT_LIMITS.FOLDER_NAME - 3) || '书签'}`;
+    },
     parseBookmarkHTML(html) {
       try {
         // 创建安全的DOM解析器
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
-        
+
         // 检查是否解析成功
         const parserError = doc.querySelector('parsererror');
         if (parserError) {
           throw new Error('HTML格式无效');
         }
-        
+
         const bookmarks = [];
         const folders = [];
         let folderCounter = 0;
         let bookmarkCounter = 0;
-        
+
         // 递归解析文件夹和书签
         const parseNode = (element, parentId = 'root', depth = 0) => {
           // 防止无限递归
@@ -306,36 +315,36 @@ export default {
             DevTools.warn('文件夹层级过深，停止解析');
             return;
           }
-          
+
           const children = Array.from(element.children);
-          
+
           for (const child of children) {
             try {
               if (child.tagName === 'DT') {
                 const dtChildren = Array.from(child.children);
-                
+
                 for (const dtChild of dtChildren) {
                   if (dtChild.tagName === 'H3') {
                     // 这是一个文件夹
                     const folderName = this.sanitizeText(dtChild.textContent || '未命名文件夹');
-                    
+
                     // 限制文件夹名称长度
-                    const truncatedName = folderName.length > APP_CONSTANTS.TEXT_LIMITS.FOLDER_NAME ? 
+                    const truncatedName = folderName.length > APP_CONSTANTS.TEXT_LIMITS.FOLDER_NAME ?
                       folderName.substring(0, APP_CONSTANTS.TEXT_LIMITS.FOLDER_NAME) + '...' : folderName;
                     const folderId = `imported_folder_${folderCounter++}`;
-                    
+
                     folders.push({
                       id: folderId,
                       name: truncatedName,
                       parentId
                     });
-                    
+
                     // 查找紧跟着的DL元素（文件夹内容）
                     let nextSibling = dtChild.nextElementSibling;
                     while (nextSibling && nextSibling.tagName !== 'DL') {
                       nextSibling = nextSibling.nextElementSibling;
                     }
-                    
+
                     if (nextSibling && nextSibling.tagName === 'DL') {
                       // 递归解析文件夹内容
                       parseNode(nextSibling, folderId, depth + 1);
@@ -346,15 +355,15 @@ export default {
                     if (url && this.isValidUrl(url)) {
                       const name = this.sanitizeText(dtChild.textContent || url);
                       const addDate = dtChild.getAttribute('add_date');
-                      
+
                       // 限制书签名称长度
-                      const truncatedName = name.length > APP_CONSTANTS.TEXT_LIMITS.BOOKMARK_NAME ? 
+                      const truncatedName = name.length > APP_CONSTANTS.TEXT_LIMITS.BOOKMARK_NAME ?
                         name.substring(0, APP_CONSTANTS.TEXT_LIMITS.BOOKMARK_NAME) + '...' : name;
-                      
-                      const createdAt = addDate ? 
-                        new Date(parseInt(addDate) * 1000).toISOString() : 
+
+                      const createdAt = addDate ?
+                        new Date(parseInt(addDate) * 1000).toISOString() :
                         new Date().toISOString();
-                      
+
                       bookmarks.push({
                         id: `imported_bookmark_${bookmarkCounter++}`,
                         name: truncatedName,
@@ -376,7 +385,7 @@ export default {
             }
           }
         };
-        
+
         // 从根DL开始解析
         const rootDL = doc.querySelector('dl');
         if (rootDL) {
@@ -391,7 +400,7 @@ export default {
               const name = this.sanitizeText(link.textContent || url);
               bookmarks.push({
                 id: `imported_bookmark_${bookmarkCounter++}`,
-                name: name.length > APP_CONSTANTS.TEXT_LIMITS.BOOKMARK_NAME ? 
+                name: name.length > APP_CONSTANTS.TEXT_LIMITS.BOOKMARK_NAME ?
                   name.substring(0, APP_CONSTANTS.TEXT_LIMITS.BOOKMARK_NAME) + '...' : name,
                 url: url.trim(),
                 folderId: 'root',
@@ -400,20 +409,20 @@ export default {
             }
           });
         }
-        
+
         return { bookmarks, folders };
       } catch (error) {
         DevTools.error('解析HTML时出错:', error);
         throw new Error('解析书签文件失败: ' + error.message);
       }
     },
-    
+
     sanitizeText(text) {
       if (Validator.isEmpty(text)) return '';
-      
+
       // 使用SecurityUtils进行安全清理
       let cleanText = SecurityUtils.stripHtml(text);
-      
+
       // 应用额外的清理规则
       cleanText = cleanText
         .replace(/&lt;/g, '<')
@@ -422,16 +431,16 @@ export default {
         .replace(/&quot;/g, '"')
         .replace(/&#39;/g, "'")
         .trim();
-      
+
       // 移除控制字符
       cleanText = cleanText.split('').filter(char => {
         const code = char.charCodeAt(0);
         return code >= 32 && code !== 127;
       }).join('');
-      
+
       return cleanText;
     },
-    
+
     isValidUrl(url) {
       try {
         const urlObj = new URL(url);
@@ -445,7 +454,7 @@ export default {
       try {
         let bookmarksToExport = [];
         let foldersToExport = [];
-        
+
         if (this.exportAll) {
           // 导出所有书签和文件夹
           bookmarksToExport = this.bookmarks;
@@ -453,12 +462,12 @@ export default {
         } else {
           // 导出选中的文件夹及其子文件夹下的书签
           const selectedFolderIds = this.$refs.folderTree.getCheckedKeys();
-          
+
           if (selectedFolderIds.length === 0) {
             this.$message.warning('请选择至少一个要导出的文件夹');
             return;
           }
-          
+
           // 获取所有选中文件夹的子文件夹
           const allFolderIds = [...selectedFolderIds];
           const getChildFolders = (parentId) => {
@@ -468,11 +477,11 @@ export default {
               getChildFolders(child.id);
             });
           };
-          
+
           selectedFolderIds.forEach(folderId => {
             getChildFolders(folderId);
           });
-          
+
           // 确保选中的文件夹及其所有父文件夹都被导出
           const ensureParentFolders = (folderId) => {
             const folder = this.folders.find(f => f.id === folderId);
@@ -483,48 +492,48 @@ export default {
               }
             }
           };
-          
+
           // 为每个选中的文件夹确保其父文件夹都被包含
           [...allFolderIds].forEach(folderId => {
             ensureParentFolders(folderId);
           });
-          
+
           // 始终包含根文件夹
           if (!allFolderIds.includes('root')) {
             allFolderIds.push('root');
           }
-          
+
           // 过滤书签和文件夹
           foldersToExport = this.folders.filter(folder => allFolderIds.includes(folder.id));
           bookmarksToExport = this.bookmarks.filter(bookmark => allFolderIds.includes(bookmark.folderId));
         }
-        
+
         if (bookmarksToExport.length === 0 && foldersToExport.length === 0) {
           this.$message.warning('没有可导出的内容');
           return;
         }
-        
+
         // 生成HTML
         const html = this.generateBookmarkHTML(bookmarksToExport, foldersToExport);
-        
+
         // 创建下载链接
         const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `bookmarks_${new Date().toISOString().split('T')[0]}.html`;
-        
+
         // 确保元素被添加到DOM中，某些浏览器需要这个
         a.style.display = 'none';
         document.body.appendChild(a);
         a.click();
-        
+
         // 清理资源
         setTimeout(() => {
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
         }, APP_CONSTANTS.DEBOUNCE_DELAY.RESOURCE_CLEANUP);
-        
+
         this.$emit('update:exportDialogVisible', false);
         this.$message.success(`导出成功：${bookmarksToExport.length} 个书签，${foldersToExport.length} 个文件夹`);
       } catch (error) {
@@ -543,7 +552,7 @@ export default {
             bookmarks: []
           };
         });
-        
+
         // 构建文件夹层次结构
         Object.keys(folderMap).forEach(id => {
           const folder = folderMap[id];
@@ -551,14 +560,14 @@ export default {
             folderMap[folder.parentId].children.push(folder);
           }
         });
-        
+
         // 将书签放入对应的文件夹
         bookmarks.forEach(bookmark => {
           if (folderMap[bookmark.folderId]) {
             folderMap[bookmark.folderId].bookmarks.push(bookmark);
           }
         });
-        
+
         // 生成HTML
         let html = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
 <!--This is an automatically generated file.
@@ -569,61 +578,61 @@ export default {
 <H1>Bookmarks</H1>
 <DL><p>
 `;
-        
+
         // 递归生成文件夹和书签HTML
         const generateFolderHTML = (folder, indent = 1) => {
           if (indent > APP_CONSTANTS.MAX_DEPTH.HTML_GENERATION) {
             DevTools.warn('文件夹层级过深，停止生成');
             return '';
           }
-          
+
           const spaces = '    '.repeat(indent);
           const escapedName = this.escapeHtml(folder.name);
           let folderHTML = `${spaces}<DT><H3>${escapedName}</H3>\n${spaces}<DL><p>\n`;
-          
+
           // 添加书签
           folder.bookmarks.forEach(bookmark => {
             try {
               const addDate = Math.floor(new Date(bookmark.createdAt).getTime() / 1000);
               const escapedName = this.escapeHtml(bookmark.name);
               const escapedUrl = this.escapeHtml(bookmark.url);
-              
+
               folderHTML += `${spaces}    <DT><A HREF="${escapedUrl}" ADD_DATE="${addDate}">${escapedName}</A>\n`;
             } catch (error) {
               DevTools.warn('生成书签HTML时出错:', error);
             }
           });
-          
+
           // 添加子文件夹
           folder.children.forEach(child => {
             folderHTML += generateFolderHTML(child, indent + 1);
           });
-          
+
           folderHTML += `${spaces}</DL><p>\n`;
           return folderHTML;
         };
-        
+
         // 从根文件夹开始生成
         const rootFolder = folderMap['root'];
         if (rootFolder) {
           rootFolder.children.forEach(child => {
             html += generateFolderHTML(child);
           });
-          
+
           // 添加根文件夹下的书签
           rootFolder.bookmarks.forEach(bookmark => {
             try {
               const addDate = Math.floor(new Date(bookmark.createdAt).getTime() / 1000);
               const escapedName = this.escapeHtml(bookmark.name);
               const escapedUrl = this.escapeHtml(bookmark.url);
-              
+
               html += `    <DT><A HREF="${escapedUrl}" ADD_DATE="${addDate}">${escapedName}</A>\n`;
             } catch (error) {
               DevTools.warn('生成根书签HTML时出错:', error);
             }
           });
         }
-        
+
         html += '</DL><p>';
         return html;
       } catch (error) {
@@ -631,10 +640,10 @@ export default {
         throw new Error('生成导出文件失败: ' + error.message);
       }
     },
-    
+
     escapeHtml(text) {
       if (!text) return '';
-      
+
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
@@ -665,4 +674,4 @@ export default {
   margin-right: 5px;
   color: #e6a23c;
 }
-</style> 
+</style>

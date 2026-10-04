@@ -45,6 +45,12 @@
 </template>
 
 <script>
+/**
+ * 固定行高虚拟列表。
+ *
+ * 只渲染视口上下的少量行，数据量达到数千条时仍保持稳定的 DOM 数量。
+ * 插槽收到的 `index` 是当前列表中的真实索引，可用于精确定位。
+ */
 import { PerformanceUtils } from '@/utils/validation';
 import { DevTools } from '@/utils/devTools';
 
@@ -207,6 +213,8 @@ export default {
       
       const scrollTop = index * this.itemHeight;
       this.$refs.container.scrollTop = scrollTop;
+      this.scrollTop = scrollTop;
+      this.updateVisibleRange();
     },
     
     // 滚动到顶部
@@ -240,6 +248,11 @@ export default {
     items() {
       // 数据变化时更新可视范围
       this.$nextTick(() => {
+        const maxScrollTop = Math.max(0, this.totalHeight - this.containerHeight);
+        if (this.$refs.container && this.$refs.container.scrollTop > maxScrollTop) {
+          this.$refs.container.scrollTop = maxScrollTop;
+          this.scrollTop = maxScrollTop;
+        }
         this.updateVisibleRange();
       });
     },

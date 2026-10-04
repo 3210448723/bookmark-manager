@@ -1,4 +1,7 @@
-// 搜索服务 - 提供统一的搜索功能
+/**
+ * 搜索服务：集中处理查询清理、结果缓存和路径搜索。
+ * 结果由 Vue 模板以文本节点渲染，因此这里不返回可执行 HTML 字符串。
+ */
 import { Validator, SecurityUtils, ErrorHandler } from './validation';
 import { APP_CONSTANTS } from '@/constants';
 import { DevTools } from '@/utils/devTools';
@@ -61,8 +64,8 @@ class SearchService {
       // 为每个匹配的书签添加路径信息
       const bookmarksWithPath = matchedBookmarks.map(bookmark => {
         const folderPath = getFolderPath(bookmark.folderId);
-        const pathString = Validator.isValidArray(folderPath) 
-          ? folderPath.map(f => SecurityUtils.escapeHtml(f.name || '')).join(' / ')
+        const pathString = Validator.isValidArray(folderPath)
+          ? folderPath.map(f => f.name || '').join(' / ')
           : '';
         
         return {

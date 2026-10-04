@@ -35,6 +35,16 @@ export const APP_CONSTANTS = {
     ROOT_MAX_HEIGHT: 600,
     FOLDER_MAX_HEIGHT: 500
   },
+
+  // 大列表虚拟渲染和访问历史限制
+  VIRTUAL_LIST: {
+    THRESHOLD: 150,
+    ROW_HEIGHT: 62,
+    MIN_HEIGHT: 260,
+    MAX_HEIGHT: 640,
+    VIEWPORT_OFFSET: 235
+  },
+  NAVIGATION_HISTORY_LIMIT: 50,
   
   // 缓存限制
   CACHE_LIMITS: {

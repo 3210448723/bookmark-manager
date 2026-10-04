@@ -45,11 +45,13 @@ export const PerformanceMonitor = {
   
   // 内存使用监控
   memory: () => {
-    if (process.env.NODE_ENV === 'development' && performance.memory) {
+    // `memory` 是 Chromium 的非标准扩展，不能直接假设所有浏览器类型都存在。
+    const browserPerformance = /** @type {any} */ (typeof performance !== 'undefined' ? performance : null);
+    if (process.env.NODE_ENV === 'development' && browserPerformance && browserPerformance.memory) {
       return {
-        used: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024),
-        total: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024),
-        limit: Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024)
+        used: Math.round(browserPerformance.memory.usedJSHeapSize / 1024 / 1024),
+        total: Math.round(browserPerformance.memory.totalJSHeapSize / 1024 / 1024),
+        limit: Math.round(browserPerformance.memory.jsHeapSizeLimit / 1024 / 1024)
       };
     }
     return null;
